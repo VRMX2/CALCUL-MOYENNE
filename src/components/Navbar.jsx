@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { LogOut, User, History, Calculator, UserCircle, Settings } from 'lucide-react';
 
 const Navbar = () => {
-    const { currentUser, logout } = useAuth();
+    const { currentUser, userProfile, logout } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
     const [showDropdown, setShowDropdown] = useState(false);
@@ -61,11 +61,19 @@ const Navbar = () => {
                                 onClick={() => setShowDropdown(!showDropdown)}
                                 className="flex items-center gap-2 hover:bg-white/10 rounded-lg px-2 py-1 transition-all"
                             >
-                                <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
-                                    <User className="w-4 h-4 text-white" />
-                                </div>
+                                {userProfile?.photoURL ? (
+                                    <img
+                                        src={userProfile.photoURL}
+                                        alt="Profile"
+                                        className="w-8 h-8 rounded-full object-cover border-2 border-purple-500"
+                                    />
+                                ) : (
+                                    <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
+                                        <User className="w-4 h-4 text-white" />
+                                    </div>
+                                )}
                                 <span className="text-sm text-gray-300 hidden sm:block">
-                                    {currentUser?.email?.split('@')[0]}
+                                    {userProfile?.displayName || currentUser?.email?.split('@')[0]}
                                 </span>
                             </button>
 

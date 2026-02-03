@@ -1,16 +1,24 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import Navbar from '../components/Navbar';
 import { motion } from 'framer-motion';
-import { User, Mail, Calendar as CalendarIcon, TrendingUp, Settings, Save } from 'lucide-react';
-import { db } from '../firebase';
+import { User, Mail, Calendar as CalendarIcon, TrendingUp, Settings, Save, Camera, Upload, X } from 'lucide-react';
+import { db, auth } from '../firebase';
 import { doc, getDoc, setDoc, collection, query, getDocs } from 'firebase/firestore';
+import { updateProfile } from 'firebase/auth';
+import { uploadToCloudinary, validateImageFile } from '../config/cloudinary';
 
 const Profile = () => {
-    const { currentUser, logout } = useAuth();
+    const { currentUser, userProfile, refreshUserProfile } = useAuth();
     const toast = useToast();
+    const fileInputRef = useRef(null);
     const [displayName, setDisplayName] = useState('');
+    const [photoURL, setPhotoURL] = useState('');
+    const [photoFile, setPhotoFile] = useState(null);
+    const [photoPreview, setPhotoPreview] = useState('');
+    const [uploadProgress, setUploadProgress] = useState(0);
+    const [uploading, setUploading] = useState(false);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [stats, setStats] = useState({
@@ -31,7 +39,10 @@ const Profile = () => {
         try {
             const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
             if (userDoc.exists()) {
-                setDisplayName(userDoc.data().displayName || '');
+                const data = userDoc.data();
+                setDisplayName(data.displayName || '');
+                setPhotoURL(data.photoURL || '');
+                setPhotoPreview(data.photoURL || '');
             }
         } catch (error) {
             console.error('Error fetching user data:', error);
@@ -62,16 +73,82 @@ const Profile = () => {
         }
     };
 
+    const handlePhotoSelect = (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const validation = validateImageFile(file);
+        if (!validation.valid) {
+            toast.error(validation.error);
+            return;
+        }
+
+        setPhotoFile(file);
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            setPhotoPreview(reader.result);
+        };
+        reader.readAsDataURL(file);
+    };
+
+    const handlePhotoUpload = async () => {
+        if (!photoFile) {
+            toast.error('Please select a photo first');
+            return;
+        }
+
+        setUploading(true);
+        setUploadProgress(0);
+
+        try {
+            const imageUrl = await uploadToCloudinary(photoFile, (progress) => {
+                setUploadProgress(progress);
+            });
+
+            setPhotoURL(imageUrl);
+            setPhotoPreview(imageUrl);
+            setPhotoFile(null);
+            toast.success('Photo uploaded successfully!');
+        } catch (error) {
+            console.error('Error uploading photo:', error);
+            toast.error('Failed to upload photo. Please try again.');
+        } finally {
+            setUploading(false);
+            setUploadProgress(0);
+        }
+    };
+
+    const handleRemovePhoto = () => {
+        setPhotoURL('');
+        setPhotoPreview('');
+        setPhotoFile(null);
+        if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+        }
+    };
+
     const handleSave = async () => {
         if (!currentUser) return;
 
         setSaving(true);
         try {
+            // Update Firestore
             await setDoc(doc(db, 'users', currentUser.uid), {
                 displayName,
+                photoURL,
                 email: currentUser.email,
                 updatedAt: new Date()
             }, { merge: true });
+
+            // Update Firebase Auth profile
+            await updateProfile(currentUser, {
+                displayName,
+                photoURL
+            });
+
+            // Refresh user profile in context
+            await refreshUserProfile(currentUser.uid);
+
             toast.success('Profile updated successfully!');
         } catch (error) {
             console.error('Error updating profile:', error);
@@ -186,15 +263,91 @@ const Profile = () => {
 
                     {/* Statistics Sidebar */}
                     <div className="lg:col-span-1 space-y-6">
-                        {/* Profile Card */}
+                        {/* Profile Card with Photo Upload */}
                         <motion.div
                             initial={{ opacity: 0, x: 20 }}
                             animate={{ opacity: 1, x: 0 }}
                             className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6 text-center"
                         >
-                            <div className="w-20 h-20 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center mx-auto mb-4">
-                                <User className="w-10 h-10 text-white" />
+                            {/* Photo Preview */}
+                            <div className="relative w-32 h-32 mx-auto mb-4">
+                                {photoPreview ? (
+                                    <img
+                                        src={photoPreview}
+                                        alt="Profile"
+                                        className="w-full h-full rounded-full object-cover border-4 border-purple-500"
+                                    />
+                                ) : (
+                                    <div className="w-full h-full bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
+                                        <User className="w-16 h-16 text-white" />
+                                    </div>
+                                )}
+
+                                {/* Camera Icon Overlay */}
+                                <button
+                                    onClick={() => fileInputRef.current?.click()}
+                                    className="absolute bottom-0 right-0 w-10 h-10 bg-purple-500 hover:bg-purple-600 rounded-full flex items-center justify-center border-4 border-gray-900 transition-all"
+                                    title="Change photo"
+                                >
+                                    <Camera className="w-5 h-5 text-white" />
+                                </button>
                             </div>
+
+                            {/* Hidden File Input */}
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                accept="image/jpeg,image/jpg,image/png,image/webp"
+                                onChange={handlePhotoSelect}
+                                className="hidden"
+                            />
+
+                            {/* Upload Progress */}
+                            {uploading && (
+                                <div className="mb-4">
+                                    <div className="w-full bg-gray-700 rounded-full h-2 mb-2">
+                                        <div
+                                            className="bg-gradient-to-r from-purple-500 to-pink-500 h-2 rounded-full transition-all"
+                                            style={{ width: `${uploadProgress}%` }}
+                                        ></div>
+                                    </div>
+                                    <p className="text-xs text-gray-400">Uploading... {uploadProgress}%</p>
+                                </div>
+                            )}
+
+                            {/* Photo Action Buttons */}
+                            {photoFile && !uploading && (
+                                <div className="flex gap-2 mb-4">
+                                    <button
+                                        onClick={handlePhotoUpload}
+                                        className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-sm font-semibold py-2 rounded-lg hover:shadow-lg hover:shadow-purple-500/50 transition-all flex items-center justify-center gap-2"
+                                    >
+                                        <Upload className="w-4 h-4" />
+                                        Upload
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            setPhotoFile(null);
+                                            setPhotoPreview(photoURL || '');
+                                            if (fileInputRef.current) fileInputRef.current.value = '';
+                                        }}
+                                        className="px-3 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-all"
+                                    >
+                                        <X className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* Remove Photo Button */}
+                            {photoURL && !photoFile && (
+                                <button
+                                    onClick={handleRemovePhoto}
+                                    className="w-full mb-4 bg-red-500/20 hover:bg-red-500/30 text-red-400 text-sm font-semibold py-2 rounded-lg transition-all"
+                                >
+                                    Remove Photo
+                                </button>
+                            )}
+
                             <h3 className="text-xl font-bold text-white mb-1">
                                 {displayName || currentUser?.email?.split('@')[0]}
                             </h3>

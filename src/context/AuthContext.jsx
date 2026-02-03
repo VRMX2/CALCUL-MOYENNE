@@ -8,7 +8,8 @@ import {
     sendPasswordResetEmail,
     sendEmailVerification as firebaseSendEmailVerification
 } from 'firebase/auth';
-import { auth, googleProvider } from '../firebase';
+import { auth, googleProvider, db } from '../firebase';
+import { doc, getDoc } from 'firebase/firestore';
 
 const AuthContext = createContext();
 
@@ -22,6 +23,7 @@ export const useAuth = () => {
 
 export const AuthProvider = ({ children }) => {
     const [currentUser, setCurrentUser] = useState(null);
+    const [userProfile, setUserProfile] = useState(null);
     const [loading, setLoading] = useState(true);
 
     const signup = (email, password) => {
@@ -51,9 +53,29 @@ export const AuthProvider = ({ children }) => {
         return Promise.reject(new Error('No user logged in'));
     };
 
+    const refreshUserProfile = async (uid) => {
+        if (!uid) return;
+        try {
+            const userDoc = await getDoc(doc(db, 'users', uid));
+            if (userDoc.exists()) {
+                setUserProfile(userDoc.data());
+            } else {
+                setUserProfile(null);
+            }
+        } catch (error) {
+            console.error('Error fetching user profile:', error);
+            setUserProfile(null);
+        }
+    };
+
     useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, (user) => {
+        const unsubscribe = onAuthStateChanged(auth, async (user) => {
             setCurrentUser(user);
+            if (user) {
+                await refreshUserProfile(user.uid);
+            } else {
+                setUserProfile(null);
+            }
             setLoading(false);
         });
 
@@ -62,12 +84,14 @@ export const AuthProvider = ({ children }) => {
 
     const value = {
         currentUser,
+        userProfile,
         signup,
         login,
         loginWithGoogle,
         logout,
         resetPassword,
         sendEmailVerification,
+        refreshUserProfile,
         loading
     };
 
