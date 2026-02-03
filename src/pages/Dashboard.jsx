@@ -4,17 +4,40 @@ import GradeInput from '../components/GradeInput';
 import ResultCard from '../components/ResultCard';
 import Navbar from '../components/Navbar';
 import { db } from '../firebase';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, query, orderBy, limit, getDocs } from 'firebase/firestore';
 import { motion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { RotateCcw } from 'lucide-react';
 
 function Dashboard() {
     const [grades, setGrades] = useState({});
     const [average, setAverage] = useState(0);
     const [isSaving, setIsSaving] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
     const { currentUser } = useAuth();
     const toast = useToast();
+
+    // Load grades from localStorage on mount
+    useEffect(() => {
+        if (currentUser) {
+            const savedGrades = localStorage.getItem(`grades_${currentUser.uid}`);
+            if (savedGrades) {
+                try {
+                    setGrades(JSON.parse(savedGrades));
+                } catch (error) {
+                    console.error('Error loading saved grades:', error);
+                }
+            }
+        }
+    }, [currentUser]);
+
+    // Save grades to localStorage whenever they change
+    useEffect(() => {
+        if (currentUser && Object.keys(grades).length > 0) {
+            localStorage.setItem(`grades_${currentUser.uid}`, JSON.stringify(grades));
+        }
+    }, [grades, currentUser]);
 
     const handleGradeChange = (id, value) => {
         if (value === '') {
@@ -49,6 +72,13 @@ function Dashboard() {
             return;
         }
 
+        // Check if there are any grades entered
+        const hasGrades = Object.values(grades).some(grade => grade !== '' && grade !== '0');
+        if (!hasGrades) {
+            toast.error('Please enter at least one grade before saving');
+            return;
+        }
+
         try {
             setIsSaving(true);
             await addDoc(collection(db, `users/${currentUser.uid}/calculations`), {
@@ -63,6 +93,36 @@ function Dashboard() {
             toast.error('Failed to save calculation. Please try again.');
         } finally {
             setIsSaving(false);
+        }
+    };
+
+    const loadLastCalculation = async () => {
+        if (!currentUser) {
+            toast.error('You must be logged in to load calculations');
+            return;
+        }
+
+        try {
+            setIsLoading(true);
+            const q = query(
+                collection(db, `users/${currentUser.uid}/calculations`),
+                orderBy('createdAt', 'desc'),
+                limit(1)
+            );
+            const querySnapshot = await getDocs(q);
+
+            if (!querySnapshot.empty) {
+                const lastCalc = querySnapshot.docs[0].data();
+                setGrades(lastCalc.details || {});
+                toast.success('Last calculation loaded successfully!');
+            } else {
+                toast.info('No saved calculations found');
+            }
+        } catch (error) {
+            console.error("Error loading calculation: ", error);
+            toast.error('Failed to load calculation. Please try again.');
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -110,6 +170,16 @@ function Dashboard() {
                     {/* Result Panel */}
                     <div className="lg:col-span-1">
                         <div className="sticky top-24">
+                            {/* Load Last Calculation Button */}
+                            <button
+                                onClick={loadLastCalculation}
+                                disabled={isLoading}
+                                className="w-full mb-4 bg-white/5 hover:bg-white/10 border border-white/20 text-gray-300 hover:text-white font-semibold py-3 rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                <RotateCcw className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
+                                {isLoading ? 'Loading...' : 'Load Last Calculation'}
+                            </button>
+
                             <ResultCard
                                 average={average}
                                 onSave={saveToFirebase}
