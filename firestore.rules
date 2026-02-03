@@ -1,0 +1,40 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // User-specific calculations
+    match /users/{userId}/calculations/{calculationId} {
+      // Users can only read and write their own calculations
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+      
+      // Validate calculation data structure
+      allow create: if request.auth != null 
+                    && request.auth.uid == userId
+                    && request.resource.data.keys().hasAll(['average', 'details', 'semester', 'createdAt'])
+                    && request.resource.data.average is number
+                    && request.resource.data.average >= 0
+                    && request.resource.data.average <= 20;
+      
+      // Allow updates with same validation
+      allow update: if request.auth != null 
+                    && request.auth.uid == userId
+                    && request.resource.data.average is number
+                    && request.resource.data.average >= 0
+                    && request.resource.data.average <= 20;
+      
+      // Allow deletion of own calculations
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // User profile data (for future use)
+    match /users/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Deny all other access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
