@@ -8,7 +8,8 @@ import { collection, addDoc, serverTimestamp, query, orderBy, limit, getDocs } f
 import { motion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { RotateCcw } from 'lucide-react';
+import { RotateCcw, Sparkles } from 'lucide-react';
+import AIAssistant from '../components/AIAssistant';
 
 function Dashboard() {
     const [grades, setGrades] = useState({});
@@ -126,9 +127,24 @@ function Dashboard() {
         }
     };
 
+    const [showAI, setShowAI] = useState(false);
+
+    // ... (existing functions)
+
     return (
         <div className="min-h-screen">
             <Navbar />
+
+            <AIAssistant
+                isOpen={showAI}
+                onClose={() => setShowAI(false)}
+                grades={grades}
+                overview={{
+                    average: parseFloat(average.toFixed(2)),
+                    highest: Object.entries(grades).length > 0 ? (Math.max(...Object.values(grades).map(v => parseFloat(v) || 0))).toFixed(2) : '0',
+                    lowest: Object.entries(grades).length > 0 ? (Math.min(...Object.values(grades).map(v => parseFloat(v) || 0))).toFixed(2) : '0'
+                }}
+            />
 
             <div className="p-4 md:p-8 flex flex-col items-center max-w-4xl mx-auto">
                 <motion.div
@@ -185,6 +201,17 @@ function Dashboard() {
                                 onSave={saveToFirebase}
                                 isSaving={isSaving}
                             />
+
+                            {/* AI Analysis Button */}
+                            <div className="mt-4">
+                                <button
+                                    onClick={() => setShowAI(true)}
+                                    className="w-full bg-gradient-to-r from-purple-600/20 to-pink-600/20 hover:from-purple-600/40 hover:to-pink-600/40 border border-purple-500/30 text-purple-200 font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2 group backdrop-blur-sm"
+                                >
+                                    <Sparkles className="w-5 h-5 group-hover:text-yellow-300 transition-colors" />
+                                    Get AI Insights
+                                </button>
+                            </div>
 
                             <div className="mt-8 p-6 bg-white/5 rounded-2xl border border-white/5">
                                 <h3 className="text-gray-400 text-sm font-semibold mb-4 uppercase">Statistics</h3>

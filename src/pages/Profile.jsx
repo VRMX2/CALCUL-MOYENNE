@@ -158,6 +158,8 @@ const Profile = () => {
         }
     };
 
+
+
     const getJoinDate = () => {
         if (!currentUser?.metadata?.creationTime) return 'N/A';
         return new Date(currentUser.metadata.creationTime).toLocaleDateString('en-US', {
@@ -259,6 +261,8 @@ const Profile = () => {
                                 </button>
                             </div>
                         </motion.div>
+
+
                     </div>
 
                     {/* Statistics Sidebar */}
@@ -391,7 +395,7 @@ const Profile = () => {
                     </div>
                 </div>
             </div>
-        </div>
+        </div >
     );
 };
 
