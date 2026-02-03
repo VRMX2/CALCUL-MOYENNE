@@ -15,13 +15,6 @@ export const uploadToCloudinary = async (file, onProgress) => {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('upload_preset', CLOUDINARY_CONFIG.uploadPreset);
-    formData.append('folder', CLOUDINARY_CONFIG.folder);
-
-    // Add transformations for profile photos
-    formData.append('transformation', JSON.stringify([
-        { width: 400, height: 400, crop: 'fill', gravity: 'face' },
-        { quality: 'auto', fetch_format: 'auto' }
-    ]));
 
     return new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
@@ -36,17 +29,37 @@ export const uploadToCloudinary = async (file, onProgress) => {
 
         xhr.addEventListener('load', () => {
             if (xhr.status === 200) {
-                const response = JSON.parse(xhr.responseText);
-                resolve(response.secure_url);
+                try {
+                    const response = JSON.parse(xhr.responseText);
+                    resolve(response.secure_url);
+                } catch (error) {
+                    console.error('Cloudinary response parse error:', error);
+                    reject(new Error('Failed to parse upload response'));
+                }
             } else {
-                reject(new Error('Upload failed'));
+                try {
+                    const errorResponse = JSON.parse(xhr.responseText);
+                    const errorMsg = errorResponse.error?.message || 'Upload failed';
+                    console.error('Cloudinary upload error:', errorResponse);
+                    reject(new Error(`Upload failed: ${errorMsg}. Please ensure the upload preset 'profile_photos' exists in Cloudinary and is set to 'Unsigned'.`));
+                } catch (e) {
+                    console.error('Upload failed with status:', xhr.status, xhr.responseText);
+                    reject(new Error(`Upload failed with status ${xhr.status}. Please check Cloudinary configuration.`));
+                }
             }
         });
 
         xhr.addEventListener('error', () => {
-            reject(new Error('Network error during upload'));
+            console.error('Network error during Cloudinary upload');
+            reject(new Error('Network error during upload. Please check your internet connection.'));
         });
 
+        xhr.addEventListener('timeout', () => {
+            console.error('Cloudinary upload timeout');
+            reject(new Error('Upload timeout. Please try again.'));
+        });
+
+        xhr.timeout = 60000; // 60 second timeout
         xhr.open('POST', `https://api.cloudinary.com/v1_1/${CLOUDINARY_CONFIG.cloudName}/image/upload`);
         xhr.send(formData);
     });
